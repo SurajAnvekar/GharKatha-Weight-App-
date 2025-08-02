@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabaseClient";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./components/Dashboard";
 import CustomerEntries from "./components/CustomerEntries";
+import Auth from "./Auth"; // ✅ Import your login component
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -21,12 +22,9 @@ export default function App() {
     };
   }, []);
 
+  // ✅ SHOW LOGIN SCREEN WHEN NOT LOGGED IN
   if (!session) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-600">
-        <p>Please log in to continue.</p>
-      </div>
-    );
+    return <Auth />;
   }
 
   return (
