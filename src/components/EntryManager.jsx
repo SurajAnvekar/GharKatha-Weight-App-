@@ -70,74 +70,81 @@ export default function EntryManager({ customer }) {
   const formatNum = (num) => parseFloat(num || 0).toFixed(3);
 
   const downloadCurrentEntries = async () => {
-    if (entries.length === 0) {
-      alert("No current entries to download");
-      return;
-    }
+  if (entries.length === 0) {
+    alert("No current entries to download");
+    return;
+  }
 
-    try {
-      const doc = new jsPDF("landscape");
+  try {
+    const doc = new jsPDF("landscape");
+    
+    // Check if autoTable is available
+    if (typeof doc.autoTable !== 'function') {
+      console.error("autoTable is not available. Trying manual setup...");
       
-      // Check if autoTable is available
-      if (typeof doc.autoTable !== 'function') {
-        console.error("autoTable is not available. Trying manual setup...");
-        
-        // Try to manually attach autoTable if imported differently
-        if (typeof autoTable === 'function') {
-          doc.plugin(autoTable);
-        } else {
-          throw new Error("autoTable plugin is not properly loaded. Please check your jspdf-autotable installation.");
-        }
+      // Try to manually attach autoTable if imported differently
+      if (typeof autoTable === 'function') {
+        doc.plugin(autoTable);
+      } else {
+        throw new Error("autoTable plugin is not properly loaded. Please check your jspdf-autotable installation.");
       }
+    }
+    
+    // Add gradient background
+    doc.setFillColor(245, 247, 250);
+    doc.rect(0, 0, 297, 210, 'F');
+    
+    // Add decorative header background
+    doc.setFillColor(99, 102, 241);
+    doc.rect(0, 0, 297, 45, 'F');
+    
+    // Company/Header info
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont(undefined, 'bold');
+    doc.text("ENTRIES REPORT", 15, 25);
+    
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Customer: ${customer.name}`, 15, 32);
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-GB')} at ${new Date().toLocaleTimeString('en-GB')}`, 15, 38);
+    
+    // Reset text color for content
+    doc.setTextColor(0, 0, 0);
+    
+    // Prepare data with safety checks
+    const creditEntries = entries.filter((e) => e && e.type === "credit" && !e.archived) || [];
+    const debitEntries = entries.filter((e) => e && e.type === "debit" && !e.archived) || [];
+    
+    const head = [["Date", "Gross Weight", "Melting", "Net Weight"]];
+    
+    const creditBody = creditEntries.map((e) => [
+      formatDate(e.date),
+      formatNum(e.gross_weight),
+      e.melting || '',
+      formatNum(e.net_weight),
+    ]);
+    
+    const debitBody = debitEntries.map((e) => [
+      formatDate(e.date),
+      formatNum(e.gross_weight),
+      e.melting || '',
+      formatNum(e.net_weight),
+    ]);
+    
+    let startY = 55;
+    
+    // Determine if we need to use single column layout for large datasets
+    const totalEntries = creditEntries.length + debitEntries.length;
+    const useSingleColumn = totalEntries > 25; // Threshold for switching to single column
+    
+    if (useSingleColumn) {
+      // SINGLE COLUMN LAYOUT - Better for large datasets
       
-      // Add gradient background
-      doc.setFillColor(245, 247, 250);
-      doc.rect(0, 0, 297, 210, 'F');
-      
-      // Add decorative header background
-      doc.setFillColor(99, 102, 241);
-      doc.rect(0, 0, 297, 45, 'F');
-      
-      // Company/Header info
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(24);
-      doc.setFont(undefined, 'bold');
-      doc.text("ENTRIES REPORT", 15, 25);
-      
-      doc.setFontSize(12);
-      doc.setFont(undefined, 'normal');
-      doc.text(`Customer: ${customer.name}`, 15, 32);
-      doc.text(`Generated: ${new Date().toLocaleDateString('en-GB')} at ${new Date().toLocaleTimeString('en-GB')}`, 15, 38);
-      
-      // Reset text color for content
-      doc.setTextColor(0, 0, 0);
-      
-      // Prepare data with safety checks
-      const creditEntries = entries.filter((e) => e && e.type === "credit" && !e.archived) || [];
-      const debitEntries = entries.filter((e) => e && e.type === "debit" && !e.archived) || [];
-      
-      const head = [["Date", "Gross Weight", "Melting", "Net Weight"]];
-      
-      const creditBody = creditEntries.map((e) => [
-        formatDate(e.date),
-        formatNum(e.gross_weight),
-        e.melting || '',
-        formatNum(e.net_weight),
-      ]);
-      
-      const debitBody = debitEntries.map((e) => [
-        formatDate(e.date),
-        formatNum(e.gross_weight),
-        e.melting || '',
-        formatNum(e.net_weight),
-      ]);
-      
-      let startY = 55;
-      
-      // CREDIT TABLE (Left side)
+      // CREDIT TABLE (Full width)
       if (creditEntries.length > 0) {
         doc.setFillColor(34, 197, 94, 0.1);
-        doc.rect(10, startY - 5, 135, 12, 'F');
+        doc.rect(10, startY - 5, 277, 12, 'F');
         doc.setFontSize(14);
         doc.setFont(undefined, 'bold');
         doc.setTextColor(22, 163, 74);
@@ -147,8 +154,8 @@ export default function EntryManager({ customer }) {
           head: head,
           body: creditBody,
           startY: startY + 8,
-          margin: { left: 14 },
-          tableWidth: 130,
+          margin: { left: 14, right: 14 },
+          tableWidth: 'auto',
           styles: { 
             fontSize: 9, 
             halign: "center",
@@ -166,7 +173,6 @@ export default function EntryManager({ customer }) {
             fillColor: [240, 253, 244] 
           },
           theme: "grid",
-          // Enhanced for large datasets
           pageBreak: 'auto',
           rowPageBreak: 'avoid',
         });
@@ -174,28 +180,30 @@ export default function EntryManager({ customer }) {
         const creditTotal = creditBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
         const creditTableEnd = doc.lastAutoTable.finalY + 5;
         doc.setFillColor(34, 197, 94, 0.2);
-        doc.rect(14, creditTableEnd, 130, 8, 'F');
+        doc.rect(14, creditTableEnd, 269, 8, 'F');
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
         doc.setTextColor(22, 163, 74);
         doc.text(`TOTAL CREDIT: ${formatNum(creditTotal)}`, 20, creditTableEnd + 5);
+        
+        startY = creditTableEnd + 20; // Set start position for debit table
       }
       
-      // DEBIT TABLE (Right side)
+      // DEBIT TABLE (Full width)
       if (debitEntries.length > 0) {
         doc.setFillColor(239, 68, 68, 0.1);
-        doc.rect(155, startY - 5, 135, 12, 'F');
+        doc.rect(10, startY - 5, 277, 12, 'F');
         doc.setFontSize(14);
         doc.setFont(undefined, 'bold');
         doc.setTextColor(220, 38, 38);
-        doc.text("DEBIT ENTRIES", 160, startY + 2);
+        doc.text("DEBIT ENTRIES", 15, startY + 2);
         
         doc.autoTable({
           head: head,
           body: debitBody,
           startY: startY + 8,
-          margin: { left: 160 },
-          tableWidth: 130,
+          margin: { left: 14, right: 14 },
+          tableWidth: 'auto',
           styles: { 
             fontSize: 9, 
             halign: "center",
@@ -213,7 +221,6 @@ export default function EntryManager({ customer }) {
             fillColor: [254, 242, 242] 
           },
           theme: "grid",
-          // Enhanced for large datasets
           pageBreak: 'auto',
           rowPageBreak: 'avoid',
         });
@@ -221,56 +228,256 @@ export default function EntryManager({ customer }) {
         const debitTotal = debitBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
         const debitTableEnd = doc.lastAutoTable.finalY + 5;
         doc.setFillColor(239, 68, 68, 0.2);
-        doc.rect(160, debitTableEnd, 130, 8, 'F');
+        doc.rect(14, debitTableEnd, 269, 8, 'F');
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
         doc.setTextColor(220, 38, 38);
-        doc.text(`TOTAL DEBIT: ${formatNum(debitTotal)}`, 166, debitTableEnd + 5);
+        doc.text(`TOTAL DEBIT: ${formatNum(debitTotal)}`, 20, debitTableEnd + 5);
       }
       
-      // BALANCE SUMMARY
-      const creditTotal = creditBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
-      const debitTotal = debitBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
-      const balance = creditTotal - debitTotal;
+    } else {
+      // DUAL COLUMN LAYOUT - Better for smaller datasets
       
-      const finalY = Math.max(doc.lastAutoTable?.finalY || 60, 60) + 20;
+      // Calculate the maximum rows to determine if tables will fit side by side
+      const maxRows = Math.max(creditEntries.length, debitEntries.length);
+      const estimatedHeight = 25 + (maxRows * 6) + 15; // Header + rows + total
+      const availableHeight = 210 - startY - 40; // Page height - start position - footer space
       
-      const balanceColor = balance > 0 ? [34, 197, 94] : balance < 0 ? [239, 68, 68] : [107, 114, 128];
-      const balanceText = balance > 0 ? "CREDIT BALANCE" : balance < 0 ? "DEBIT BALANCE" : "BALANCED";
-      
-      doc.setFillColor(balanceColor[0], balanceColor[1], balanceColor[2], 0.1);
-      doc.rect(14, finalY - 5, 276, 25, 'F');
-      
-      doc.setDrawColor(balanceColor[0], balanceColor[1], balanceColor[2]);
-      doc.setLineWidth(2);
-      doc.rect(14, finalY - 5, 276, 25, 'S');
-      
-      doc.setFontSize(16);
-      doc.setFont(undefined, 'bold');
-      doc.setTextColor(balanceColor[0], balanceColor[1], balanceColor[2]);
-      doc.text(`FINAL BALANCE: ${formatNum(Math.abs(balance))}`, 20, finalY + 5);
-      
-      doc.setFontSize(12);
-      doc.text(`STATUS: ${balanceText}`, 20, finalY + 12);
-      
-      // Footer with page numbers for large datasets
-      const pageCount = doc.internal.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(107, 114, 128);
-        doc.text("Generated by Entry Management System", 14, 200);
-        doc.text(`Page ${i} of ${pageCount} | Report ID: ${Date.now()}`, 220, 200);
+      if (estimatedHeight > availableHeight) {
+        // If tables are too tall, use single column layout
+        // CREDIT TABLE (Full width)
+        if (creditEntries.length > 0) {
+          doc.setFillColor(34, 197, 94, 0.1);
+          doc.rect(10, startY - 5, 277, 12, 'F');
+          doc.setFontSize(14);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(22, 163, 74);
+          doc.text("CREDIT ENTRIES", 15, startY + 2);
+          
+          doc.autoTable({
+            head: head,
+            body: creditBody,
+            startY: startY + 8,
+            margin: { left: 14, right: 14 },
+            tableWidth: 'auto',
+            styles: { 
+              fontSize: 9, 
+              halign: "center",
+              cellPadding: 3,
+              lineColor: [34, 197, 94],
+              lineWidth: 0.5
+            },
+            headStyles: { 
+              fillColor: [34, 197, 94],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 10
+            },
+            alternateRowStyles: { 
+              fillColor: [240, 253, 244] 
+            },
+            theme: "grid",
+            pageBreak: 'auto',
+            rowPageBreak: 'avoid',
+          });
+          
+          const creditTotal = creditBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
+          const creditTableEnd = doc.lastAutoTable.finalY + 5;
+          doc.setFillColor(34, 197, 94, 0.2);
+          doc.rect(14, creditTableEnd, 269, 8, 'F');
+          doc.setFontSize(11);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(22, 163, 74);
+          doc.text(`TOTAL CREDIT: ${formatNum(creditTotal)}`, 20, creditTableEnd + 5);
+          
+          startY = creditTableEnd + 20;
+        }
+        
+        // DEBIT TABLE (Full width)
+        if (debitEntries.length > 0) {
+          doc.setFillColor(239, 68, 68, 0.1);
+          doc.rect(10, startY - 5, 277, 12, 'F');
+          doc.setFontSize(14);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(220, 38, 38);
+          doc.text("DEBIT ENTRIES", 15, startY + 2);
+          
+          doc.autoTable({
+            head: head,
+            body: debitBody,
+            startY: startY + 8,
+            margin: { left: 14, right: 14 },
+            tableWidth: 'auto',
+            styles: { 
+              fontSize: 9, 
+              halign: "center",
+              cellPadding: 3,
+              lineColor: [239, 68, 68],
+              lineWidth: 0.5
+            },
+            headStyles: { 
+              fillColor: [239, 68, 68],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 10
+            },
+            alternateRowStyles: { 
+              fillColor: [254, 242, 242] 
+            },
+            theme: "grid",
+            pageBreak: 'auto',
+            rowPageBreak: 'avoid',
+          });
+          
+          const debitTotal = debitBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
+          const debitTableEnd = doc.lastAutoTable.finalY + 5;
+          doc.setFillColor(239, 68, 68, 0.2);
+          doc.rect(14, debitTableEnd, 269, 8, 'F');
+          doc.setFontSize(11);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(220, 38, 38);
+          doc.text(`TOTAL DEBIT: ${formatNum(debitTotal)}`, 20, debitTableEnd + 5);
+        }
+      } else {
+        // Use side-by-side layout for smaller datasets
+        
+        // CREDIT TABLE (Left side)
+        if (creditEntries.length > 0) {
+          doc.setFillColor(34, 197, 94, 0.1);
+          doc.rect(10, startY - 5, 135, 12, 'F');
+          doc.setFontSize(14);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(22, 163, 74);
+          doc.text("CREDIT ENTRIES", 15, startY + 2);
+          
+          doc.autoTable({
+            head: head,
+            body: creditBody,
+            startY: startY + 8,
+            margin: { left: 14 },
+            tableWidth: 130,
+            styles: { 
+              fontSize: 9, 
+              halign: "center",
+              cellPadding: 3,
+              lineColor: [34, 197, 94],
+              lineWidth: 0.5
+            },
+            headStyles: { 
+              fillColor: [34, 197, 94],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 10
+            },
+            alternateRowStyles: { 
+              fillColor: [240, 253, 244] 
+            },
+            theme: "grid",
+            pageBreak: 'avoid', // Prevent page break within table
+            rowPageBreak: 'avoid',
+          });
+          
+          const creditTotal = creditBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
+          const creditTableEnd = doc.lastAutoTable.finalY + 5;
+          doc.setFillColor(34, 197, 94, 0.2);
+          doc.rect(14, creditTableEnd, 130, 8, 'F');
+          doc.setFontSize(11);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(22, 163, 74);
+          doc.text(`TOTAL CREDIT: ${formatNum(creditTotal)}`, 20, creditTableEnd + 5);
+        }
+        
+        // DEBIT TABLE (Right side) - Start at same Y position as credit table
+        if (debitEntries.length > 0) {
+          doc.setFillColor(239, 68, 68, 0.1);
+          doc.rect(155, startY - 5, 135, 12, 'F');
+          doc.setFontSize(14);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(220, 38, 38);
+          doc.text("DEBIT ENTRIES", 160, startY + 2);
+          
+          doc.autoTable({
+            head: head,
+            body: debitBody,
+            startY: startY + 8,
+            margin: { left: 160 },
+            tableWidth: 130,
+            styles: { 
+              fontSize: 9, 
+              halign: "center",
+              cellPadding: 3,
+              lineColor: [239, 68, 68],
+              lineWidth: 0.5
+            },
+            headStyles: { 
+              fillColor: [239, 68, 68],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 10
+            },
+            alternateRowStyles: { 
+              fillColor: [254, 242, 242] 
+            },
+            theme: "grid",
+            pageBreak: 'avoid', // Prevent page break within table
+            rowPageBreak: 'avoid',
+          });
+          
+          const debitTotal = debitBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
+          const debitTableEnd = doc.lastAutoTable.finalY + 5;
+          doc.setFillColor(239, 68, 68, 0.2);
+          doc.rect(160, debitTableEnd, 130, 8, 'F');
+          doc.setFontSize(11);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(220, 38, 38);
+          doc.text(`TOTAL DEBIT: ${formatNum(debitTotal)}`, 166, debitTableEnd + 5);
+        }
       }
-      
-      const timestamp = new Date().toISOString().slice(0, 10);
-      doc.save(`${customer.name}_Entries_Report_${timestamp}.pdf`);
-      
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      alert(`Error generating PDF: ${error.message}. Please check the console for details.`);
     }
-  };
+    
+    // BALANCE SUMMARY
+    const creditTotal = creditBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
+    const debitTotal = debitBody.reduce((sum, row) => sum + parseFloat(row[3] || 0), 0);
+    const balance = creditTotal - debitTotal;
+    
+    const finalY = Math.max(doc.lastAutoTable?.finalY || 60, 60) + 20;
+    
+    const balanceColor = balance > 0 ? [34, 197, 94] : balance < 0 ? [239, 68, 68] : [107, 114, 128];
+    const balanceText = balance > 0 ? "CREDIT BALANCE" : balance < 0 ? "DEBIT BALANCE" : "BALANCED";
+    
+    doc.setFillColor(balanceColor[0], balanceColor[1], balanceColor[2], 0.1);
+    doc.rect(14, finalY - 5, 276, 25, 'F');
+    
+    doc.setDrawColor(balanceColor[0], balanceColor[1], balanceColor[2]);
+    doc.setLineWidth(2);
+    doc.rect(14, finalY - 5, 276, 25, 'S');
+    
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(balanceColor[0], balanceColor[1], balanceColor[2]);
+    doc.text(`FINAL BALANCE: ${formatNum(Math.abs(balance))}`, 20, finalY + 5);
+    
+    doc.setFontSize(12);
+    doc.text(`STATUS: ${balanceText}`, 20, finalY + 12);
+    
+    // Footer with page numbers
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(107, 114, 128);
+      doc.text("Generated by Entry Management System", 14, 200);
+      doc.text(`Page ${i} of ${pageCount} | Report ID: ${Date.now()}`, 220, 200);
+    }
+    
+    const timestamp = new Date().toISOString().slice(0, 10);
+    doc.save(`${customer.name}_Entries_Report_${timestamp}.pdf`);
+    
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    alert(`Error generating PDF: ${error.message}. Please check the console for details.`);
+  }
+};
 
   const handleDownloadPDF = async () => {
     if (!dateRange.start || !dateRange.end) {
