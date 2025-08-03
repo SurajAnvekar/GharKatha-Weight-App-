@@ -32,27 +32,29 @@ export default function EntryManager({ customer }) {
   const [waistageMemory, setWaistageMemory] = useState("");
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
-  const fetchEntries = useCallback(async () => {
-    if (!customer) return;
+  
+const fetchEntries = useCallback(async () => {
+  if (!customer) return;
 
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("entries")
-        .select("*")
-        .eq("customer_id", customer.id)
-        .order("date", { ascending: true });
+  setIsLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from("entries")
+      .select("*")
+      .eq("customer_id", customer.id)
+      .order("date", { ascending: true })
+      .order("id", { ascending: true }); // Add this line to preserve entry order for same dates
 
-      if (error) throw error;
+    if (error) throw error;
 
-      setEntries(data?.filter((e) => !e.archived) || []);
-      setArchivedEntries(data?.filter((e) => e.archived) || []);
-    } catch (error) {
-      console.error("Error fetching entries:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [customer]);
+    setEntries(data?.filter((e) => !e.archived) || []);
+    setArchivedEntries(data?.filter((e) => e.archived) || []);
+  } catch (error) {
+    console.error("Error fetching entries:", error);
+  } finally {
+    setIsLoading(false);
+  }
+}, [customer]);
 
   useEffect(() => {
     fetchEntries();
