@@ -33,6 +33,7 @@ export default function EntryManager({ customer }) {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   
+// Updated fetchEntries function to use the existing timestamp
 const fetchEntries = useCallback(async () => {
   if (!customer) return;
 
@@ -43,7 +44,7 @@ const fetchEntries = useCallback(async () => {
       .select("*")
       .eq("customer_id", customer.id)
       .order("date", { ascending: true })
-      .order("id", { ascending: true }); // Add this line to preserve entry order for same dates
+      .order("created_at", { ascending: true }); // Use your existing timestamp
 
     if (error) throw error;
 
